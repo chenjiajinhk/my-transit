@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>出行即時到站 · 港鐵 / 城巴</title>
+<meta name="description" content="港鐵與城巴實時到站資訊，純前端即時數據。" />
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Inter:wght@400;600;700&display=swap" rel="stylesheet" />
+<style>
+  :root { color-scheme: light; }
+  html, body { -webkit-tap-highlight-color: transparent; }
+  body {
+    font-family: "Inter", "Noto Sans TC", -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC", "Microsoft JhengHei", sans-serif;
+    background: #f1f5f9;
+  }
+  .tabular-nums { font-variant-numeric: tabular-nums; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spin { animation: spin 1s linear infinite; }
+  @keyframes pulse-dot { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+  .pulse-dot { animation: pulse-dot 1.6s ease-in-out infinite; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+  .fade-in { animation: fadeIn .35s ease both; }
+  .skeleton { background: linear-gradient(90deg, #e2e8f0 25%, #f1f5f9 50%, #e2e8f0 75%); background-size: 200% 100%; animation: shimmer 1.2s infinite; }
+  @keyframes shimmer { to { background-position: -200% 0; } }
+</style>
+</head>
+<body class="min-h-screen text-slate-800 antialiased">
+
+  <!-- 頂部標題列 -->
+  <header class="sticky top-0 z-20 bg-white/90 backdrop-blur border-b border-slate-200">
+    <div class="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center text-white font-bold text-sm shadow-sm">HK</div>
+        <div>
+          <h1 class="text-lg font-bold leading-tight tracking-tight">出行即時到站</h1>
+          <p id="lastUpdated" class="text-xs text-slate-500 flex items-center gap-1.5">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 pulse-dot inline-block"></span>
+            載入中…
+          </p>
+        </div>
+      </div>
+      <button id="refreshBtn" class="inline-flex items-center gap-2 rounded-xl bg-slate-900 text-white text-sm font-medium px-3.5 py-2.5 active:scale-95 transition shadow-sm hover:bg-slate-800 disabled:opacity-60">
+        <svg id="refreshIcon" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 12a9 9 0 1 1-2.64-6.36" /><path d="M21 3v6h-6" />
+        </svg>
+        <span id="refreshLabel">刷新</span>
+      </button>
+    </div>
+
+    <!-- Tab 切換 -->
+    <nav class="max-w-2xl mx-auto px-4 pb-3">
+      <div class="grid grid-cols-2 gap-1 p-1 bg-slate-100 rounded-2xl">
+        <button id="tabSchool" class="tab-btn rounded-xl py-2.5 text-sm font-bold transition" data-tab="school">學校</button>
+        <button id="tabBorder" class="tab-btn rounded-xl py-2.5 text-sm font-bold transition" data-tab="border">關口</button>
+      </div>
+    </nav>
+  </header>
+
+  <main class="max-w-2xl mx-auto px-4 py-5 pb-16 space-y-5">
+
+    <!-- ============ 學校 Tab ============ -->
+    <section id="tab-school" class="tab-panel space-y-5">
+      <!-- 港鐵區塊 -->
+      <div class="flex items-center gap-2 px-1">
+        <span class="w-1 h-5 rounded-full bg-rose-600"></span>
+        <h2 class="text-base font-bold text-slate-900">港鐵 · 即時到站</h2>
+        <span class="text-xs text-slate-400 ml-auto">每站 3 班</span>
+      </div>
+      <div id="mtrCards" class="space-y-3"></div>
+
+      <!-- 校巴區塊 -->
+      <div class="flex items-center gap-2 px-1 mt-1">
+        <span class="w-1 h-5 rounded-full bg-sky-600"></span>
+        <h2 class="text-base font-bold text-slate-900">校巴 · 固定時間表</h2>
+        <span class="text-xs text-slate-400 ml-auto">倒數中</span>
+      </div>
+      <div id="schoolCards" class="space-y-3"></div>
+    </section>
+
+    <!-- ============ 關口 Tab ============ -->
+    <section id="tab-border" class="tab-panel space-y-5 hidden">
+      <div class="flex items-center gap-2 px-1">
+        <span class="w-1 h-5 rounded-full bg-amber-500"></span>
+        <h2 class="text-base font-bold text-slate-900">城巴 · 實時到站</h2>
+        <span class="text-xs text-slate-400 ml-auto">每站 3 班</span>
+      </div>
+      <div id="ctbCards" class="space-y-3"></div>
+    </section>
+
+    <footer class="text-center text-xs text-slate-400 leading-relaxed pt-2">
+      數據來源：香港政府「資料一線通」data.gov.hk<br />
+      港鐵列車到站時間 API · 城巴實時到站 API
+    </footer>
+  </main>
+
+<script>
+/* =====================================================================
+ *  配置區：全部為真實公開 API 參數（無任何 Mock 數據）
+ * ===================================================================== */
+
+// 港鐵列車到站：https://rt.data.gov.hk/v1/transport/mtr/getSchedule.php?line=&sta=
+// dest 為「終點站代碼」過濾，確保只顯示正確方向的列車。
+const MTR_ENDPOINT = 'https://rt.data.gov.hk/v1/transport/mtr/getSchedule.php';
+const MTR_STATIONS = [
+  { line: 'TKL', sta: 'HAH', dest: 'NOP', name: '坑口站',      dir: '北角方向' },
+  { line: 'EAL', sta: 'TAW', dest: 'ADM', name: '大圍站',      dir: '金鐘方向' },
+  { line: 'EAL', sta: 'UNI', dest: 'ADM', name: '大學站',      dir: '金鐘方向' },
+];
+
+// 城巴實時到站：https://rt.data.gov.hk/v2/transport/citybus/eta/CTB/{stop}/{route}
+// dir = 行車方向（O = 去程 outward / I = 回程 inbound）
+const CTB_ENDPOINT = 'https://rt.data.gov.hk/v2/transport/citybus/eta/CTB';
+const CTB_STOPS = [
+  { route: 'B8',  stop: '003714', dir: 'I', name: '香園圍口岸', to: '往大圍站' },
+  { route: '798', stop: '001963', dir: 'I', name: '田園閣',     to: '往調景嶺' },
+  { route: '798', stop: '001752', dir: 'O', name: '新寶城',     to: '往火炭' },
+  { route: 'B8',  stop: '001967', dir: 'O', name: '麗豪酒店',   to: '往香園圍口岸' },
+  { route: 'B8',  stop: '003410', dir: 'O', name: '太和邨',     to: '往香園圍口岸' },
+];
+
+// 校巴固定時間表（HH:MM，香港時間）
+const SCHOOL_BUS = [
+  { name: '大學開出', times: ['21:00','21:05','21:10','21:15','21:25','21:30','21:35','21:40','21:45','21:50'] },
+  { name: '大圍開出', times: ['21:00','21:10','21:20','21:25','21:30','21:35','21:40'] },
+];
+
+const SLOTS = 3;                 // 每個項目固定展示 3 條 / 班
+const REFRESH_MS = 60 * 1000;    // 每 60 秒自動刷新
+const TICK_MS    = 15 * 1000;    // 每 15 秒本地重算倒數（不重抓 API）
+
+/* =====================================================================
+ *  工具函式
+ * ===================================================================== */
+const pad = n => String(n).padStart(2, '0');
+
+// 把 epoch(ms) 以「香港時間」顯示為 HH:MM
+function fmtHM(epoch) {
+  const d = new Date(epoch + 8 * 3600 * 1000);
+  return pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes());
+}
+
+// 港鐵時間 "2026-09-07 20:22:16" → epoch（香港 +08:00）
+function mtrToEpoch(str) {
+  return Date.parse(String(str).replace(' ', 'T') + '+08:00');
+}
+
+// 城巴 eta 已是 ISO 帶時區字串，直接 parse
+function ctbToEpoch(str) { return Date.parse(str); }
+
+// 校巴 "HH:MM"（香港時間、今日）→ epoch
+function schoolToEpoch(hhmm) {
+  const [h, m] = hhmm.split(':').map(Number);
+  const hkToday = new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);
+  return Date.parse(hkToday + 'T' + pad(h) + ':' + pad(m) + ':00+08:00');
+}
+
+// 倒數顯示：依剩餘毫秒計算文字與顏色
+function countdown(epoch) {
+  const diff = epoch - Date.now();
+  if (diff <= 0) return { text: '已到站', cls: 'text-slate-400' };
+  const sec = Math.ceil(diff / 1000);
+  if (sec < 60) return { text: '即將到達', cls: 'text-emerald-600 font-bold' };
+  const min = Math.ceil(sec / 60);
+  if (min <= 3) return { text: min + ' 分鐘', cls: 'text-amber-600 font-bold' };
+  return { text: min + ' 分鐘', cls: 'text-slate-600' };
+}
+
+// 依剩餘時間給倒數文字的「弱/強」色彩（用於班次大數字旁）
+function timeAgoMs(epoch) { return epoch - Date.now(); }
+
+/* =====================================================================
+ *  資料狀態
+ * ===================================================================== */
+const state = { mtr: [], ctb: [], school: [] };  // 每項為 { name, sub, mode, arrivals:[{epoch,time,remark}] | null, error }
+let activeTab = 'school';
+let loading = false;
+
+/* =====================================================================
+ *  資料抓取
+ * ===================================================================== */
+async function fetchJSON(url) {
+  const res = await fetch(url, { cache: 'no-store' });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  return res.json();
+}
+
+// 港鐵：單一車站
+async function fetchOneMTR(cfg) {
+  const url = `${MTR_ENDPOINT}?line=${cfg.line}&sta=${cfg.sta}`;
+  const json = await fetchJSON(url);
+  if (json.status !== 1 || !json.data) {
+    throw new Error((json.message && json.message !== 'successful') ? json.message : '暫無列車數據');
+  }
+  const key = `${cfg.line}-${cfg.sta}`;
+  const station = json.data[key];
+  if (!station) throw new Error('查無此站數據');
+  const arrivals = (station.DOWN || []).concat(station.UP || [])
+    .filter(t => t.dest === cfg.dest && t.time && t.valid !== 'N')
+    .sort((a, b) => mtrToEpoch(a.time) - mtrToEpoch(b.time))
+    .slice(0, SLOTS)
+    .map(t => ({ epoch: mtrToEpoch(t.time), time: fmtHM(mtrToEpoch(t.time)), remark: t.plat ? t.plat + ' 號月台' : '' }));
+  return {
+    name: cfg.name, dir: cfg.dir, mode: 'mtr',
+    isDelay: json.isdelay === 'Y',
+    arrivals,
+  };
+}
+
+// 城巴：單一車站＋路線
+async function fetchOneCTB(cfg) {
+  const url = `${CTB_ENDPOINT}/${cfg.stop}/${cfg.route}`;
+  const json = await fetchJSON(url);
+  const list = Array.isArray(json.data) ? json.data : [];
+  const arrivals = list
+    .filter(x => x.dir === cfg.dir && x.eta)
+    .sort((a, b) => ctbToEpoch(a.eta) - ctbToEpoch(b.eta))
+    .slice(0, SLOTS)
+    .map(x => ({ epoch: ctbToEpoch(x.eta), time: fmtHM(ctbToEpoch(x.eta)), remark: x.rmk_tc || '' }));
+  return { name: cfg.name, dir: cfg.to, mode: 'ctb', arrivals };
+}
+
+// 校巴：純本地計算接下來的 3 班
+function computeSchool() {
+  return SCHOOL_BUS.map(s => {
+    const arrivals = s.times
+      .map(t => ({ epoch: schoolToEpoch(t), time: t }))
+      .filter(a => a.epoch > Date.now())
+      .slice(0, SLOTS);
+    return { name: s.name, dir: '今日時間表', mode: 'school', arrivals };
+  });
+}
+
+async function loadAll() {
+  if (loading) return;
+  loading = true;
+  setLoadingUI(true);
+
+  const [mtrResults, ctbResults] = await Promise.all([
+    Promise.allSettled(MTR_STATIONS.map(fetchOneMTR)),
+    Promise.allSettled(CTB_STOPS.map(fetchOneCTB)),
+  ]);
+
+  state.mtr = mtrResults.map((r, i) => r.status === 'fulfilled'
+    ? r.value
+    : { name: MTR_STATIONS[i].name, dir: MTR_STATIONS[i].dir, mode: 'mtr', error: friendly(r.reason) });
+  state.ctb = ctbResults.map((r, i) => r.status === 'fulfilled'
+    ? r.value
+    : { name: CTB_STOPS[i].name, dir: CTB_STOPS[i].to, mode: 'ctb', error: friendly(r.reason) });
+  state.school = computeSchool();
+
+  markUpdated();
+  loading = false;
+  setLoadingUI(false);
+  renderActiveTab();
+}
+
+function friendly(err) {
+  if (!err) return '連線失敗';
+  if (err instanceof TypeError) return '網絡錯誤，請檢查連線';
+  const s = String(err.message || err);
+  return s.replace('Failed to fetch', '網絡錯誤').slice(0, 60);
+}
+
+/* =====================================================================
+ *  渲染
+ * ===================================================================== */
+const MODE_META = {
+  mtr:    { chip: '港鐵', chipCls: 'bg-rose-600',       badgeCls: 'bg-rose-100 text-rose-700' },
+  ctb:    { chip: '城巴', chipCls: 'bg-amber-500',      badgeCls: 'bg-amber-100 text-amber-700' },
+  school: { chip: '校巴', chipCls: 'bg-sky-600',        badgeCls: 'bg-sky-100 text-sky-700' },
+};
+
+function cardShell(item) {
+  const m = MODE_META[item.mode];
+  let inner;
+  if (item.error) {
+    inner = `<div class="flex items-center gap-3 text-sm text-rose-600 bg-rose-50 rounded-xl px-4 py-3">
+      <svg class="w-5 h-5 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg>
+      <span>${item.error}</span></div>`;
+  } else if (item.arrivals && item.arrivals.length > 0) {
+    inner = arrivalList(item, m);
+  } else {
+    const emptyMsg = item.mode === 'school' ? '今日班次已完結' : '暫無即將到站班次';
+    inner = `<div class="text-sm text-slate-400 bg-slate-50 rounded-xl px-4 py-3">${emptyMsg}</div>`;
+  }
+  return `<div class="bg-white rounded-2xl shadow-sm border border-slate-200/70 overflow-hidden fade-in">
+    <div class="flex items-center gap-3 px-4 pt-3.5 pb-1">
+      <span class="text-[11px] font-bold ${m.chipCls} text-white rounded-md px-2 py-0.5 tracking-wide">${m.chip}</span>
+      <div class="min-w-0 flex-1">
+        <div class="text-base font-bold text-slate-900 truncate">${item.name}</div>
+        <div class="text-xs text-slate-500 truncate">${item.dir}${item.isDelay ? ' · <span class="text-rose-500 font-semibold">列車延誤</span>' : ''}</div>
+      </div>
+    </div>
+    <div class="px-4 pb-3.5">${inner}</div>
+  </div>`;
+}
+
+function arrivalList(item, m) {
+  let rows = '';
+  for (let i = 0; i < SLOTS; i++) {
+    const a = item.arrivals[i];
+    if (a) {
+      const cd = countdown(a.epoch);
+      const remark = a.remark ? `<div class="text-[11px] text-slate-400 mt-0.5">${a.remark}</div>` : '';
+      rows += `<div class="flex items-center justify-between py-2.5 ${i < SLOTS - 1 ? 'border-b border-slate-100' : ''}">
+        <div class="flex items-center gap-3">
+          <span class="flex items-center justify-center w-7 h-7 rounded-full text-sm font-bold ${m.badgeCls}">${i + 1}</span>
+          <div>
+            <div class="text-xl font-semibold tabular-nums text-slate-900 leading-none">${a.time}</div>
+            ${remark}
+          </div>
+        </div>
+        <span class="text-sm tabular-nums ${cd.cls}">${cd.text}</span>
+      </div>`;
+    } else {
+      rows += `<div class="flex items-center justify-between py-2.5 ${i < SLOTS - 1 ? 'border-b border-slate-100' : ''}">
+        <div class="flex items-center gap-3">
+          <span class="flex items-center justify-center w-7 h-7 rounded-full text-sm font-bold bg-slate-100 text-slate-300">${i + 1}</span>
+          <span class="text-sm text-slate-300">— 暫無更多班次 —</span>
+        </div>
+      </div>`;
+    }
+  }
+  return rows;
+}
+
+function renderActiveTab() {
+  if (activeTab === 'school') {
+    document.getElementById('mtrCards').innerHTML = state.mtr.map(cardShell).join('')
+      || skeletonCards(3);
+    document.getElementById('schoolCards').innerHTML = state.school.map(cardShell).join('')
+      || skeletonCards(2);
+  } else {
+    document.getElementById('ctbCards').innerHTML = state.ctb.map(cardShell).join('')
+      || skeletonCards(5);
+  }
+}
+
+function skeletonCards(n) {
+  let out = '';
+  for (let i = 0; i < n; i++) {
+    out += `<div class="bg-white rounded-2xl shadow-sm border border-slate-200/70 p-4 space-y-3">
+      <div class="skeleton h-4 w-2/5 rounded"></div>
+      <div class="skeleton h-10 w-full rounded"></div>
+      <div class="skeleton h-10 w-full rounded"></div>
+    </div>`;
+  }
+  return out;
+}
+
+function markUpdated() {
+  const d = new Date(Date.now() + 8 * 3600 * 1000);
+  const t = pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes()) + ':' + pad(d.getUTCSeconds());
+  document.getElementById('lastUpdated').innerHTML =
+    `<span class="w-1.5 h-1.5 rounded-full bg-emerald-500 pulse-dot inline-block"></span>最後更新 ${t} · 每 60 秒自動刷新`;
+}
+
+function setLoadingUI(on) {
+  const btn = document.getElementById('refreshBtn');
+  const icon = document.getElementById('refreshIcon');
+  const label = document.getElementById('refreshLabel');
+  btn.disabled = on;
+  icon.classList.toggle('spin', on);
+  label.textContent = on ? '刷新中' : '刷新';
+}
+
+/* =====================================================================
+ *  Tab 切換
+ * ===================================================================== */
+function switchTab(tab) {
+  activeTab = tab;
+  document.querySelectorAll('.tab-btn').forEach(b => {
+    const active = b.dataset.tab === tab;
+    b.classList.toggle('bg-white', active);
+    b.classList.toggle('text-slate-900', active);
+    b.classList.toggle('shadow-sm', active);
+    b.classList.toggle('text-slate-500', !active);
+  });
+  document.getElementById('tab-school').classList.toggle('hidden', tab !== 'school');
+  document.getElementById('tab-border').classList.toggle('hidden', tab !== 'border');
+  renderActiveTab();
+}
+
+/* =====================================================================
+ *  啟動
+ * ===================================================================== */
+document.getElementById('tabSchool').addEventListener('click', () => switchTab('school'));
+document.getElementById('tabBorder').addEventListener('click', () => switchTab('border'));
+document.getElementById('refreshBtn').addEventListener('click', loadAll);
+
+// 初次：先畫骨架，再抓資料
+switchTab('school');
+loadAll();
+
+// 每 60 秒自動抓取最新數據
+setInterval(loadAll, REFRESH_MS);
+// 每 15 秒重算倒數（不重抓 API）
+setInterval(renderActiveTab, TICK_MS);
+</script>
+</body>
+</html>
