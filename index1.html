@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>香港出行 · 實時到站</title>
+<meta name="description" content="港鐵、校巴與城巴實時到站資訊（真實開放數據）">
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  :root { color-scheme: light; }
+  html { -webkit-tap-highlight-color: transparent; }
+  body {
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+      "PingFang HK", "Microsoft JhengHei", "Noto Sans TC", sans-serif;
+    background: linear-gradient(180deg, #eef2f7 0%, #e7edf5 100%);
+    min-height: 100vh;
+  }
+
+  /* 卡片 */
+  .card {
+    background: #ffffff;
+    border-radius: 1.25rem;
+    border: 1px solid #e6eaf0;
+    box-shadow: 0 1px 2px rgba(15,23,42,.04), 0 8px 24px -12px rgba(15,23,42,.18);
+    padding: 1rem 1rem 0.5rem;
+  }
+  .card-head {
+    border-radius: .75rem;
+    padding: .625rem .75rem;
+    margin-bottom: .25rem;
+    color: #fff;
+  }
+
+  /* 排名徽章 */
+  .rank-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 2.4rem;
+    padding: .2rem .5rem;
+    border-radius: .5rem;
+    font-size: .72rem;
+    font-weight: 700;
+    letter-spacing: .02em;
+    background: #f1f5f9;
+    color: #475569;
+    white-space: nowrap;
+  }
+
+  /* 倒數數字 */
+  .countdown { font-variant-numeric: tabular-nums; }
+
+  /* Loading 三點 */
+  .dots { display: inline-flex; gap: 4px; }
+  .dots i {
+    width: 6px; height: 6px; border-radius: 9999px;
+    background: currentColor; opacity: .55;
+    animation: blink 1.2s infinite ease-in-out;
+  }
+  .dots i:nth-child(2) { animation-delay: .15s; }
+  .dots i:nth-child(3) { animation-delay: .3s; }
+  @keyframes blink { 0%,80%,100% { opacity:.2; transform: translateY(0);} 40% { opacity:1; transform: translateY(-2px);} }
+
+  /* 刷新按鈕 */
+  #refreshBtn { transition: transform .4s ease; }
+  #refreshBtn:active { transform: rotate(180deg); }
+
+  /* Tab 分段控制 */
+  .tab-btn {
+    flex: 1;
+    padding: .625rem 1rem;
+    border-radius: .85rem;
+    font-weight: 700;
+    font-size: .95rem;
+    color: #64748b;
+    background: transparent;
+    transition: all .2s ease;
+    display: inline-flex; align-items: center; justify-content: center; gap: .4rem;
+  }
+  .tab-btn.active {
+    background: #0f172a;
+    color: #ffffff;
+    box-shadow: 0 6px 16px -6px rgba(15,23,42,.5);
+  }
+  .tab-panel { display: none; }
+  .tab-panel.on { display: block; animation: fade .25s ease; }
+  @keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+  .section-title { display:flex; align-items:center; gap:.5rem; }
+</style>
+</head>
+<body class="text-slate-800 antialiased">
+
+<div class="max-w-xl mx-auto px-4 pb-16">
+
+  <!-- 頂部 -->
+  <header class="sticky top-0 z-10 pt-4 pb-3 bg-gradient-to-b from-[#eef2f7] via-[#eef2f7]/95 to-transparent backdrop-blur-sm">
+    <div class="flex items-center justify-between">
+      <div>
+        <h1 class="text-xl font-extrabold tracking-tight text-slate-900">香港出行</h1>
+        <p class="text-xs text-slate-500 mt-0.5">
+          港鐵 · 校巴 · 城巴　<span id="clockNow" class="tabular-nums font-medium text-slate-600"></span>
+        </p>
+      </div>
+      <div class="flex flex-col items-end gap-1">
+        <button id="refreshBtn" onclick="refreshAll()"
+          class="inline-flex items-center gap-2 rounded-full bg-slate-900 text-white text-sm font-semibold px-4 py-2 shadow-md hover:bg-slate-700 active:scale-95 transition"
+          title="手動刷新">
+          <svg id="refreshIcon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/>
+          </svg>
+          刷新
+        </button>
+        <span id="lastUpdate" class="text-[11px] text-slate-400 tabular-nums">載入中…</span>
+      </div>
+    </div>
+
+    <!-- Tabs -->
+    <nav class="mt-3 flex gap-1.5 bg-white/70 border border-slate-200 rounded-2xl p-1.5 shadow-sm">
+      <button class="tab-btn active" data-tab="school" onclick="switchTab('school')">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10L12 5 2 10l10 5 10-5z"/><path d="M6 12v5c0 1.7 2.7 3 6 3s6-1.3 6-3v-5"/></svg>
+        學校
+      </button>
+      <button class="tab-btn" data-tab="border" onclick="switchTab('border')">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v3"/><path d="M5 7h14"/><path d="M7 7v9a5 5 0 0 0 10 0V7"/><path d="M4 21h16"/></svg>
+        關口
+      </button>
+    </nav>
+  </header>
+
+  <!-- ============ Tab：學校 ============ -->
+  <section id="tab-school" class="tab-panel on">
+
+    <!-- 港鐵 -->
+    <div class="section-title mt-5 mb-2 px-1">
+      <span class="w-1.5 h-5 rounded-full bg-[#4f9fd4]"></span>
+      <h2 class="text-base font-bold text-slate-700">港鐵即時到站</h2>
+      <span class="text-[11px] text-slate-400">每站 3 班</span>
+    </div>
+    <div id="mtr-list" class="space-y-3"></div>
+
+    <!-- 校巴 -->
+    <div class="section-title mt-7 mb-2 px-1">
+      <span class="w-1.5 h-5 rounded-full bg-amber-500"></span>
+      <h2 class="text-base font-bold text-slate-700">校巴固定時間表</h2>
+      <span class="text-[11px] text-slate-400">接下 3 班 · 倒數</span>
+    </div>
+    <div id="schoolbus-list" class="space-y-3"></div>
+
+    <p class="text-[11px] text-slate-400 mt-4 text-center">港鐵資料來源：data.gov.hk 港鐵 Next Train API</p>
+  </section>
+
+  <!-- ============ Tab：關口 ============ -->
+  <section id="tab-border" class="tab-panel">
+
+    <div class="section-title mt-5 mb-2 px-1">
+      <span class="w-1.5 h-5 rounded-full bg-[#0284c7]"></span>
+      <h2 class="text-base font-bold text-slate-700">城巴實時到站</h2>
+      <span class="text-[11px] text-slate-400">每站 3 班</span>
+    </div>
+    <div id="citybus-list" class="space-y-3"></div>
+
+    <p class="text-[11px] text-slate-400 mt-4 text-center">城巴資料來源：data.gov.hk 城巴實時到站 API</p>
+  </section>
+
+  <footer class="mt-10 text-center text-[11px] text-slate-400">
+    每 60 秒自動更新 · 資料僅供參考
+  </footer>
+</div>
+
+<script>
+/* =====================================================================
+ * 配置（全部為真實 data.gov.hk 開放數據，無任何模擬資料）
+ * ===================================================================== */
+
+// 港鐵到站：line/sta 對應 MTR Next Train API；金鐘/北角方向為 DOWN 方向
+const MTR_CONFIG = [
+  { id:'mtr-hah', name:'坑口站', line:'TKL', lineName:'將軍澳線', sta:'HAH', dir:'DOWN', dirText:'北角方向', color:'#7d499d' },
+  { id:'mtr-taw', name:'大圍站', line:'EAL', lineName:'東鐵線',   sta:'TAW', dir:'DOWN', dirText:'金鐘方向', color:'#4f9fd4' },
+  { id:'mtr-uni', name:'大學站', line:'EAL', lineName:'東鐵線',   sta:'UNI', dir:'DOWN', dirText:'金鐘方向', color:'#4f9fd4' },
+];
+
+const MTR_DEST = {
+  NOP:'北角', ADM:'金鐘', POA:'寶琳', LHP:'康城', LOW:'羅湖', LMC:'落馬洲',
+  SHS:'上水', FOT:'火炭', TAP:'大埔墟', HAH:'坑口', TAW:'大圍', UNI:'大學'
+};
+
+// 校巴固定時間表（由使用者提供，配合系統時間計算倒數）
+const SCHOOL_BUS = [
+  { id:'bus-uni', name:'大學開出', color:'#f59e0b',
+    times:['21:00','21:05','21:10','21:15','21:25','21:30','21:35','21:40','21:45','21:50'] },
+  { id:'bus-taw', name:'大圍開出', color:'#f59e0b',
+    times:['21:00','21:10','21:20','21:25','21:30','21:35','21:40'] },
+];
+
+// 城巴路線/站點：stop 為城巴站點編號，dir 為行車方向（O=往終點站、I=往起點站）
+const CITYBUS_CONFIG = [
+  { id:'cb-b8-hyw',   route:'B8',  stop:'003714', dir:'I', title:'B8',  sub:'往大圍站 · 香園圍口岸', color:'#0284c7' },
+  { id:'cb-798-ty',   route:'798', stop:'001963', dir:'I', title:'798', sub:'往調景嶺 · 田園閣',     color:'#0ea5a8' },
+  { id:'cb-798-sps',  route:'798', stop:'001752', dir:'O', title:'798', sub:'往火炭 · 新寶城',        color:'#0ea5a8' },
+  { id:'cb-b8-regal', route:'B8',  stop:'001967', dir:'O', title:'B8',  sub:'往香園圍口岸 · 麗豪酒店', color:'#0284c7' },
+  { id:'cb-b8-taiwo', route:'B8',  stop:'003410', dir:'O', title:'B8',  sub:'往香園圍口岸 · 太和邨',   color:'#0284c7' },
+];
+
+// 城巴 remark（如有）常見中文
+const CTB_RMK = { 'Last Bus':'尾班車', '尾班車':'尾班車' };
+
+/* =====================================================================
+ * 狀態
+ * ===================================================================== */
+const state = {
+  mtr: {},        // id -> { status:'loading'|'ok'|'error', data }
+  citybus: {},    // 同上
+  lastUpdate: null,
+};
+let inFlight = false;
+
+/* =====================================================================
+ * 工具函數
+ * ===================================================================== */
+const pad = n => String(n).padStart(2, '0');
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+function parseMtrTime(s) {
+  if (!s) return Date.now();
+  const d = new Date(s.replace(' ', 'T')); // MTR time 為香港本地時間
+  return isNaN(d.getTime()) ? Date.now() : d.getTime();
+}
+function fmtHHMM(d) { return pad(d.getHours()) + ':' + pad(d.getMinutes()); }
+
+// 倒數文字（供每秒 ticker 使用）
+function countdownLabel(targetMs, zero, near) {
+  const diff = targetMs - Date.now();
+  if (diff <= 0) return zero;
+  if (diff < 60000) return near;
+  return Math.floor(diff / 60000) + ' 分鐘';
+}
+
+/* =====================================================================
+ * 資料抓取（真實 fetch）
+ * ===================================================================== */
+async function fetchJSON(url) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  return res.json();
+}
+
+async function fetchMTR(cfg) {
+  const url = `https://rt.data.gov.hk/v1/transport/mtr/getSchedule.php?line=${cfg.line}&sta=${cfg.sta}`;
+  const j = await fetchJSON(url);
+  const block = j.data && j.data[`${cfg.line}-${cfg.sta}`];
+  if (!block) throw new Error('無此車站資料');
+  const trains = (block[cfg.dir] || [])
+    .filter(t => t.valid !== 'N')
+    .slice(0, 3)
+    .map(t => ({
+      dest: MTR_DEST[t.dest] || t.dest,
+      plat: t.plat,
+      timeText: (t.time || '').slice(11, 16),
+      target: parseMtrTime(t.time),
+    }));
+  return { isdelay: j.isdelay === 'Y', trains };
+}
+
+async function fetchCitybus(cfg) {
+  const url = `https://rt.data.gov.hk/v2/transport/citybus/eta/CTB/${cfg.stop}/${cfg.route}`;
+  const j = await fetchJSON(url);
+  const list = (j.data || [])
+    .filter(x => x.dir === cfg.dir)
+    .sort((a, b) => new Date(a.eta) - new Date(b.eta))
+    .slice(0, 3)
+    .map(x => ({
+      dest: x.dest_tc || '',
+      timeText: fmtHHMM(new Date(x.eta)),
+      target: new Date(x.eta).getTime(),
+      rmk: (x.rmk_tc && CTB_RMK[x.rmk_tc]) || x.rmk_tc || '',
+    }));
+  return list;
+}
+
+// 校巴：過濾出「時間 > 現在」的接下來 3 班
+function schoolBusNext(times) {
+  const now = new Date();
+  return times
+    .map(t => {
+      const [h, m] = t.split(':').map(Number);
+      const d = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m);
+      return { timeText: t, target: d.getTime() };
+    })
+    .filter(x => x.target > Date.now())
+    .slice(0, 3);
+}
+
+/* =====================================================================
+ * 渲染
+ * ===================================================================== */
+function loadingHTML() {
+  return `<div class="py-6 text-center text-slate-400 text-sm">
+    <span class="dots"><i></i><i></i><i></i></span>
+    <span class="ml-1">載入中…</span>
+  </div>`;
+}
+function errorHTML(msg) {
+  return `<div class="py-5 text-center">
+    <p class="text-sm font-semibold text-rose-500">無法載入資料</p>
+    <p class="text-xs text-slate-400 mt-1">${esc(msg)}</p>
+    <button onclick="refreshAll()" class="mt-2 text-xs font-semibold text-slate-600 underline underline-offset-2">重試</button>
+  </div>`;
+}
+function emptyHTML(text) {
+  return `<div class="py-5 text-center text-slate-400 text-sm">${esc(text)}</div>`;
+}
+
+// 一行到站/發車資訊
+function row(rank, primary, secondary, target, timeRight, opts) {
+  const o = opts || {};
+  const zero = o.zero || '已到站';
+  const near = o.near || '即將到站';
+  return `
+  <div class="flex items-center gap-3 py-3 border-b border-slate-100 last:border-b-0">
+    <span class="rank-badge">${esc(rank)}</span>
+    <div class="flex-1 min-w-0">
+      <p class="text-[15px] font-semibold text-slate-800 truncate">${esc(primary)}</p>
+      ${secondary ? `<p class="text-xs text-slate-400 truncate mt-0.5">${esc(secondary)}</p>` : ''}
+    </div>
+    <div class="shrink-0 text-right">
+      <p class="text-base font-bold text-slate-900 countdown" data-target="${target}" data-zero="${zero}" data-near="${near}">${countdownLabel(target, zero, near)}</p>
+      ${timeRight ? `<p class="text-xs text-slate-400 tabular-nums">${esc(timeRight)}</p>` : ''}
+    </div>
+  </div>`;
+}
+
+function fewerNote(n) {
+  return n > 0 && n < 3
+    ? `<div class="pt-2 text-center text-[11px] text-slate-300">今日餘下班次不足 3 班</div>` : '';
+}
+
+/* --- 港鐵卡片 --- */
+function mtrCard(cfg) {
+  const st = state.mtr[cfg.id];
+  let body;
+  if (!st || st.status === 'loading') body = loadingHTML();
+  else if (st.status === 'error') body = errorHTML(st.error);
+  else {
+    const d = st.data;
+    if (!d.trains.length) body = emptyHTML('暫無列車到站資料');
+    else {
+      const rows = d.trains.map((t, i) =>
+        row(`第${i+1}班`, `往 ${t.dest}`, `月台 ${t.plat}`, t.target, t.timeText)
+      ).join('');
+      body = rows + fewerNote(d.trains.length);
+      if (d.isdelay) body = `<div class="mb-2 -mt-1 text-center text-[11px] font-semibold text-amber-600">⚠ 列車服務延誤</div>` + body;
+    }
+  }
+  return `
+  <article class="card" style="border-left:4px solid ${cfg.color}">
+    <div class="card-head flex items-center justify-between" style="background:${cfg.color}">
+      <div>
+        <p class="font-bold leading-tight">${esc(cfg.name)}</p>
+        <p class="text-[11px] opacity-90">${esc(cfg.lineName)} · ${esc(cfg.dirText)}</p>
+      </div>
+      <span class="text-[11px] font-semibold bg-white/20 rounded-full px-2 py-0.5">港鐵</span>
+    </div>
+    <div class="px-1">${body}</div>
+  </article>`;
+}
+
+/* --- 校巴卡片 --- */
+function schoolBusCard(cfg) {
+  const next = schoolBusNext(cfg.times);
+  let body;
+  if (!next.length) {
+    body = emptyHTML('今日班次已結束');
+  } else {
+    const rows = next.map((b, i) =>
+      row(`第${i+1}班`, b.timeText, '發車時間', b.target, '',
+        { zero:'已開出', near:'即將開出' })
+    ).join('');
+    body = rows + fewerNote(next.length);
+  }
+  return `
+  <article class="card" style="border-left:4px solid ${cfg.color}">
+    <div class="card-head flex items-center justify-between" style="background:${cfg.color}">
+      <div>
+        <p class="font-bold leading-tight">${esc(cfg.name)}</p>
+        <p class="text-[11px] opacity-90">固定時間表</p>
+      </div>
+      <span class="text-[11px] font-semibold bg-white/20 rounded-full px-2 py-0.5">校巴</span>
+    </div>
+    <div class="px-1">${body}</div>
+  </article>`;
+}
+
+/* --- 城巴卡片 --- */
+function citybusCard(cfg) {
+  const st = state.citybus[cfg.id];
+  let body;
+  if (!st || st.status === 'loading') body = loadingHTML();
+  else if (st.status === 'error') body = errorHTML(st.error);
+  else if (!st.data.length) body = emptyHTML('暫無實時到站（可能已過尾班車）');
+  else {
+    const rows = st.data.map((x, i) =>
+      row(`第${i+1}班`, `往 ${x.dest}`, x.rmk || '', x.target, x.timeText)
+    ).join('');
+    body = rows + fewerNote(st.data.length);
+  }
+  return `
+  <article class="card" style="border-left:4px solid ${cfg.color}">
+    <div class="card-head flex items-center justify-between" style="background:${cfg.color}">
+      <div>
+        <p class="font-bold leading-tight">${esc(cfg.title)} <span class="font-medium opacity-90">· ${esc(cfg.sub)}</span></p>
+        <p class="text-[11px] opacity-90">城巴實時到站</p>
+      </div>
+      <span class="text-[11px] font-semibold bg-white/20 rounded-full px-2 py-0.5">城巴</span>
+    </div>
+    <div class="px-1">${body}</div>
+  </article>`;
+}
+
+/* --- 全域渲染 --- */
+function renderAll() {
+  document.getElementById('mtr-list').innerHTML = MTR_CONFIG.map(mtrCard).join('');
+  document.getElementById('schoolbus-list').innerHTML = SCHOOL_BUS.map(schoolBusCard).join('');
+  document.getElementById('citybus-list').innerHTML = CITYBUS_CONFIG.map(citybusCard).join('');
+
+  const lu = document.getElementById('lastUpdate');
+  lu.textContent = state.lastUpdate ? '更新 ' + fmtHHMM(state.lastUpdate) + ':' + pad(state.lastUpdate.getSeconds()) : '載入中…';
+  tickCountdowns();
+}
+
+/* 每秒更新：倒數數字 + 當前時鐘 */
+function tickCountdowns() {
+  const now = new Date();
+  document.getElementById('clockNow').textContent = fmtHHMM(now) + ':' + pad(now.getSeconds());
+  document.querySelectorAll('.countdown[data-target]').forEach(el => {
+    el.textContent = countdownLabel(
+      parseInt(el.dataset.target, 10), el.dataset.zero, el.dataset.near
+    );
+  });
+}
+
+/* =====================================================================
+ * 主流程
+ * ===================================================================== */
+async function refreshAll() {
+  if (inFlight) return;
+  inFlight = true;
+
+  const icon = document.getElementById('refreshIcon');
+  icon.classList.add('animate-spin');
+
+  // 標記所有卡片為 loading
+  MTR_CONFIG.forEach(c => state.mtr[c.id] = { status:'loading' });
+  CITYBUS_CONFIG.forEach(c => state.citybus[c.id] = { status:'loading' });
+  renderAll();
+
+  const jobs = [];
+  MTR_CONFIG.forEach(c => jobs.push((async () => {
+    try { state.mtr[c.id] = { status:'ok', data: await fetchMTR(c) }; }
+    catch (e) { state.mtr[c.id] = { status:'error', error: e.message }; }
+  })()));
+  CITYBUS_CONFIG.forEach(c => jobs.push((async () => {
+    try { state.citybus[c.id] = { status:'ok', data: await fetchCitybus(c) }; }
+    catch (e) { state.citybus[c.id] = { status:'error', error: e.message }; }
+  })()));
+
+  await Promise.all(jobs);
+  state.lastUpdate = new Date();
+  renderAll();
+
+  icon.classList.remove('animate-spin');
+  inFlight = false;
+}
+
+function switchTab(tab) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  document.getElementById('tab-school').classList.toggle('on', tab === 'school');
+  document.getElementById('tab-border').classList.toggle('on', tab === 'border');
+}
+
+/* 啟動 */
+refreshAll();
+setInterval(refreshAll, 60000);   // 每 60 秒自動刷新
+setInterval(tickCountdowns, 1000); // 每秒更新倒數
+</script>
+</body>
+</html>
