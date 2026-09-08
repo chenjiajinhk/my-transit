@@ -86,15 +86,34 @@
   .tab-panel.on { display: block; animation: fade .25s ease; }
   @keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 
-  /* 二級分區（前往 / 回家） */
+  /* 二級分區（前往 / 回家）：可摺疊 */
   .sub-heading {
     display: flex; align-items: center; gap: .5rem;
-    margin-bottom: .5rem;
-    padding-left: .25rem;
+    padding: .625rem .75rem;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: .75rem;
+    cursor: pointer;
+    user-select: none;
   }
-  .sub-heading .bar { width: .35rem; height: 1.05rem; border-radius: 9999px; }
-  .sub-heading .title { font-size: .92rem; font-weight: 700; color: #334155; }
-  .sub-divider { height: 1px; background: #e2e8f0; margin: 1.5rem 0; }
+  .sub-heading:active { box-shadow: 0 2px 6px rgba(15,23,42,.08); }
+  .sub-heading .bar { width: .35rem; height: 1.05rem; border-radius: 9999px; flex: none; }
+  .sub-heading .title { font-size: .9rem; font-weight: 700; color: #334155; }
+  .sub-heading .chevron {
+    margin-left: auto; flex: none;
+    color: #94a3b8;
+    transition: transform .25s ease;
+  }
+  .sub-heading.open .chevron { transform: rotate(180deg); }
+
+  .sub-collapse {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows .28s ease;
+    margin-bottom: .75rem;
+  }
+  .sub-collapse.open { grid-template-rows: 1fr; }
+  .sub-collapse-inner { overflow: hidden; min-height: 0; }
 </style>
 </head>
 <body class="text-slate-800 antialiased">
@@ -140,20 +159,28 @@
   <section id="tab-school" class="tab-panel on">
 
     <!-- 前往 -->
-    <div class="sub-heading mt-4">
+    <div class="sub-heading open mt-4" id="head-school-out" onclick="toggleSection('school','out')">
       <span class="bar" style="background:#0ea5e9"></span>
       <span class="title">前往</span>
+      <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
     </div>
-    <div id="sub-school-out" class="space-y-3"></div>
-
-    <div class="sub-divider"></div>
+    <div class="sub-collapse open" id="wrap-school-out">
+      <div class="sub-collapse-inner">
+        <div id="sub-school-out" class="space-y-3 pt-2"></div>
+      </div>
+    </div>
 
     <!-- 回家 -->
-    <div class="sub-heading">
+    <div class="sub-heading" id="head-school-home" onclick="toggleSection('school','home')">
       <span class="bar" style="background:#10b981"></span>
       <span class="title">回家</span>
+      <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
     </div>
-    <div id="sub-school-home" class="space-y-3"></div>
+    <div class="sub-collapse" id="wrap-school-home">
+      <div class="sub-collapse-inner">
+        <div id="sub-school-home" class="space-y-3 pt-2"></div>
+      </div>
+    </div>
 
     <p class="text-[11px] text-slate-400 mt-4 text-center">港鐵資料來源：data.gov.hk 港鐵 Next Train API · 校巴為固定時間表</p>
   </section>
@@ -162,20 +189,28 @@
   <section id="tab-border" class="tab-panel">
 
     <!-- 前往 -->
-    <div class="sub-heading mt-4">
+    <div class="sub-heading open mt-4" id="head-border-out" onclick="toggleSection('border','out')">
       <span class="bar" style="background:#0ea5e9"></span>
       <span class="title">前往</span>
+      <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
     </div>
-    <div id="sub-border-out" class="space-y-3"></div>
-
-    <div class="sub-divider"></div>
+    <div class="sub-collapse open" id="wrap-border-out">
+      <div class="sub-collapse-inner">
+        <div id="sub-border-out" class="space-y-3 pt-2"></div>
+      </div>
+    </div>
 
     <!-- 回家 -->
-    <div class="sub-heading">
+    <div class="sub-heading" id="head-border-home" onclick="toggleSection('border','home')">
       <span class="bar" style="background:#10b981"></span>
       <span class="title">回家</span>
+      <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
     </div>
-    <div id="sub-border-home" class="space-y-3"></div>
+    <div class="sub-collapse" id="wrap-border-home">
+      <div class="sub-collapse-inner">
+        <div id="sub-border-home" class="space-y-3 pt-2"></div>
+      </div>
+    </div>
 
     <p class="text-[11px] text-slate-400 mt-4 text-center">城巴資料來源：data.gov.hk 城巴實時到站 API</p>
   </section>
@@ -548,6 +583,25 @@ function switchTab(tab) {
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
   document.getElementById('tab-school').classList.toggle('on', tab === 'school');
   document.getElementById('tab-border').classList.toggle('on', tab === 'border');
+}
+
+/* 手風琴：前往 / 回家 摺疊（同一頁籤內最多展開一個） */
+const openSec = { school: 'out', border: 'out' };
+
+function toggleSection(tab, sec) {
+  // 點已展開的標題 → 收起；點另一個 → 展開它並收起原本那個
+  openSec[tab] = (openSec[tab] === sec) ? null : sec;
+  applySections(tab);
+}
+
+function applySections(tab) {
+  ['out', 'home'].forEach(sec => {
+    const isOpen = openSec[tab] === sec;
+    const head = document.getElementById(`head-${tab}-${sec}`);
+    const wrap = document.getElementById(`wrap-${tab}-${sec}`);
+    if (head) head.classList.toggle('open', isOpen);
+    if (wrap) wrap.classList.toggle('open', isOpen);
+  });
 }
 
 /* 啟動 */
